@@ -36,8 +36,6 @@ const deleteCategory = asyncHandler(async (req, res) => {
     return sendResponse(res, 200, 'Category deleted successfully.');
 });
 
-const deleteCategory = async;
-
 export const categoryController = {
     createCategory,
     getCategories,
