@@ -63,7 +63,64 @@ const getMyVendorProfile = async (user) => {
     return vendor;
 };
 
+const getVendors = async () => {
+    return prisma.vendor.findMany({
+        orderBy: {
+            createdAt: 'desc',
+        },
+
+        include: {
+            user: {
+                select: {
+                    id: true,
+                    fullName: true,
+                    email: true,
+                    role: true,
+                },
+            },
+        },
+    });
+};
+
+const updateVendorStatus = async (vendorId, status) => {
+    const vendor = await prisma.vendor.findUnique({
+        where: {
+            id: vendorId,
+        },
+    });
+
+    if (!vendor) {
+        throw new AppError(
+            'Vendor profile not found.',
+            404,
+            'VENDOR_PROFILE_NOT_FOUND',
+        );
+    }
+
+    return prisma.vendor.update({
+        where: {
+            id: vendorId,
+        },
+
+        data: {
+            status,
+        },
+
+        include: {
+            user: {
+                select: {
+                    id: true,
+                    fullName: true,
+                    email: true,
+                },
+            },
+        },
+    });
+};
+
 export const vendorService = {
     createVendorProfile,
     getMyVendorProfile,
+    getVendors,
+    updateVendorStatus,
 };

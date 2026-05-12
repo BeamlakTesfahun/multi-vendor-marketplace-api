@@ -17,3 +17,15 @@ export const createVendorProfileSchema = z.object({
     params: z.object({}),
     query: z.object({}),
 });
+
+export const updateVendorStatusSchema = z.object({
+    body: z.object({
+        status: z.enum(['PENDING', 'APPROVED', 'REJECTED']),
+    }),
+
+    params: z.object({
+        vendorId: z.string(),
+    }),
+
+    query: z.object({}),
+});
