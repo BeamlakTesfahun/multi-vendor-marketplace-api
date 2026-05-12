@@ -18,7 +18,7 @@ router.get('/', productController.getProducts);
 router.get(
     '/my-products',
     protect,
-    authorizeRoles('VENDOR'),
+    authorizeRoles('VENDOR', 'ADMIN'),
     productController.getMyProducts,
 );
 
@@ -27,7 +27,7 @@ router.get('/:productId', productController.getProductById);
 router.post(
     '/',
     protect,
-    authorizeRoles('VENDOR'),
+    authorizeRoles('VENDOR', 'ADMIN'),
     validateRequest(createProductSchema),
     productController.createProduct,
 );
@@ -35,7 +35,7 @@ router.post(
 router.patch(
     '/:productId',
     protect,
-    authorizeRoles('VENDOR'),
+    authorizeRoles('VENDOR', 'ADMIN'),
     validateRequest(updateProductSchema),
     productController.updateProduct,
 );
@@ -43,7 +43,7 @@ router.patch(
 router.delete(
     '/:productId',
     protect,
-    authorizeRoles('VENDOR'),
+    authorizeRoles('VENDOR', 'ADMIN'),
     productController.deleteProduct,
 );
 
