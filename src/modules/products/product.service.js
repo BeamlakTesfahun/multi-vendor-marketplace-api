@@ -10,28 +10,76 @@ const generateSlug = (name) => {
     });
 };
 
+const getVendorForProductCreation = async (user, payload) => {
+    if (user.role === 'VENDOR') {
+        const vendor = await prisma.vendor.findUnique({
+            where: {
+                userId: user.id,
+            },
+        });
+
+        if (!vendor) {
+            throw new AppError(
+                'Vendor profile is required to create products.',
+                403,
+                'VENDOR_PROFILE_REQUIRED',
+            );
+        }
+
+        if (vendor.status !== 'APPROVED') {
+            throw new AppError(
+                'Your vendor profile must be approved before creating products.',
+                403,
+                'VENDOR_NOT_APPROVED',
+            );
+        }
+
+        return vendor;
+    }
+
+    if (user.role === 'ADMIN') {
+        if (!payload.vendorId) {
+            throw new AppError(
+                'Vendor ID is required when admin creates a product.',
+                400,
+                'VENDOR_ID_REQUIRED',
+            );
+        }
+
+        const vendor = await prisma.vendor.findUnique({
+            where: {
+                id: payload.vendorId,
+            },
+        });
+
+        if (!vendor) {
+            throw new AppError(
+                'Vendor profile not found.',
+                404,
+                'VENDOR_PROFILE_NOT_FOUND',
+            );
+        }
+
+        if (vendor.status !== 'APPROVED') {
+            throw new AppError(
+                'Selected vendor must be approved before products can be created.',
+                403,
+                'VENDOR_NOT_APPROVED',
+            );
+        }
+
+        return vendor;
+    }
+
+    throw new AppError(
+        'Only vendors or admins can create products.',
+        403,
+        'FORBIDDEN',
+    );
+};
+
 const createProduct = async (user, payload) => {
-    const vendor = await prisma.vendor.findUnique({
-        where: {
-            userId: user.id,
-        },
-    });
-
-    if (!vendor) {
-        throw new AppError(
-            'Vendor profile is required to create products.',
-            403,
-            'VENDOR_PROFILE_REQUIRED',
-        );
-    }
-
-    if (vendor.status !== 'APPROVED') {
-        throw new AppError(
-            'Your vendor profile must be approved before creating products.',
-            403,
-            'VENDOR_NOT_APPROVED',
-        );
-    }
+    const vendor = await getVendorForProductCreation(user, payload);
 
     const category = await prisma.category.findUnique({
         where: {
@@ -92,7 +140,7 @@ const createProduct = async (user, payload) => {
 };
 
 const getProducts = async () => {
-    const products = await prisma.product.findMany({
+    return prisma.product.findMany({
         where: {
             status: 'ACTIVE',
         },
@@ -115,8 +163,6 @@ const getProducts = async () => {
             },
         },
     });
-
-    return products;
 };
 
 const getProductById = async (productId) => {
@@ -164,7 +210,7 @@ const getMyProducts = async (user) => {
         );
     }
 
-    const products = await prisma.product.findMany({
+    return prisma.product.findMany({
         where: {
             vendorId: vendor.id,
         },
@@ -181,25 +227,9 @@ const getMyProducts = async (user) => {
             },
         },
     });
-
-    return products;
 };
 
 const updateProduct = async (user, productId, payload) => {
-    const vendor = await prisma.vendor.findUnique({
-        where: {
-            userId: user.id,
-        },
-    });
-
-    if (!vendor) {
-        throw new AppError(
-            'Vendor profile not found.',
-            404,
-            'VENDOR_PROFILE_NOT_FOUND',
-        );
-    }
-
     const product = await prisma.product.findUnique({
         where: {
             id: productId,
@@ -210,7 +240,23 @@ const updateProduct = async (user, productId, payload) => {
         throw new AppError('Product not found.', 404, 'PRODUCT_NOT_FOUND');
     }
 
-    if (product.vendorId !== vendor.id) {
+    if (user.role === 'VENDOR') {
+        const vendor = await prisma.vendor.findUnique({
+            where: {
+                userId: user.id,
+            },
+        });
+
+        if (!vendor || product.vendorId !== vendor.id) {
+            throw new AppError(
+                'You are not allowed to update this product.',
+                403,
+                'FORBIDDEN',
+            );
+        }
+    }
+
+    if (user.role !== 'VENDOR' && user.role !== 'ADMIN') {
         throw new AppError(
             'You are not allowed to update this product.',
             403,
@@ -257,7 +303,7 @@ const updateProduct = async (user, productId, payload) => {
         }
     }
 
-    const updatedProduct = await prisma.product.update({
+    return prisma.product.update({
         where: {
             id: productId,
         },
@@ -275,6 +321,7 @@ const updateProduct = async (user, productId, payload) => {
                 select: {
                     id: true,
                     storeName: true,
+                    status: true,
                 },
             },
             category: {
@@ -286,25 +333,9 @@ const updateProduct = async (user, productId, payload) => {
             },
         },
     });
-
-    return updatedProduct;
 };
 
 const deleteProduct = async (user, productId) => {
-    const vendor = await prisma.vendor.findUnique({
-        where: {
-            userId: user.id,
-        },
-    });
-
-    if (!vendor) {
-        throw new AppError(
-            'Vendor profile not found.',
-            404,
-            'VENDOR_PROFILE_NOT_FOUND',
-        );
-    }
-
     const product = await prisma.product.findUnique({
         where: {
             id: productId,
@@ -315,7 +346,23 @@ const deleteProduct = async (user, productId) => {
         throw new AppError('Product not found.', 404, 'PRODUCT_NOT_FOUND');
     }
 
-    if (product.vendorId !== vendor.id) {
+    if (user.role === 'VENDOR') {
+        const vendor = await prisma.vendor.findUnique({
+            where: {
+                userId: user.id,
+            },
+        });
+
+        if (!vendor || product.vendorId !== vendor.id) {
+            throw new AppError(
+                'You are not allowed to delete this product.',
+                403,
+                'FORBIDDEN',
+            );
+        }
+    }
+
+    if (user.role !== 'VENDOR' && user.role !== 'ADMIN') {
         throw new AppError(
             'You are not allowed to delete this product.',
             403,

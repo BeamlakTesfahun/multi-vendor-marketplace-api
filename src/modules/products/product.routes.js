@@ -15,6 +15,14 @@ const router = express.Router();
 
 router.get('/', productController.getProducts);
 
+router.post(
+    '/',
+    protect,
+    authorizeRoles('VENDOR', 'ADMIN'),
+    validateRequest(createProductSchema),
+    productController.createProduct,
+);
+
 router.get(
     '/my-products',
     protect,
@@ -23,14 +31,6 @@ router.get(
 );
 
 router.get('/:productId', productController.getProductById);
-
-router.post(
-    '/',
-    protect,
-    authorizeRoles('VENDOR', 'ADMIN'),
-    validateRequest(createProductSchema),
-    productController.createProduct,
-);
 
 router.patch(
     '/:productId',

@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 export const createProductSchema = z.object({
     body: z.object({
+        vendorId: z.string().optional(),
+
         categoryId: z.string().min(1, 'Category ID is required'),
 
         name: z
@@ -19,8 +21,10 @@ export const createProductSchema = z.object({
             .min(0, 'Stock cannot be negative'),
 
         status: z
-            .enum(['DRAFT', 'ACTIVE', 'OUT_OF_STOCK', 'ARCHIVED'])
+            .enum(['DRAFT', 'ACTIVE', 'INACTIVE', 'OUT_OF_STOCK', 'ARCHIVED'])
             .optional(),
+
+        vendorId: z.string().optional(),
     }),
 
     params: z.object({}),
@@ -40,7 +44,7 @@ export const updateProductSchema = z.object({
         stock: z.coerce.number().int().min(0).optional(),
 
         status: z
-            .enum(['DRAFT', 'ACTIVE', 'OUT_OF_STOCK', 'ARCHIVED'])
+            .enum(['DRAFT', 'ACTIVE', 'INACTIVE', 'OUT_OF_STOCK', 'ARCHIVED'])
             .optional(),
     }),
 
