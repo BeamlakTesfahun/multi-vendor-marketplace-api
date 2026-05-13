@@ -27,7 +27,29 @@ const getMyVendorProfile = asyncHandler(async (req, res) => {
     );
 });
 
+const getVendors = asyncHandler(async (req, res) => {
+    const result = await vendorService.getVendors();
+
+    return sendResponse(res, 200, 'Vendors fetched successfully.', result);
+});
+
+const updateVendorStatus = asyncHandler(async (req, res) => {
+    const result = await vendorService.updateVendorStatus(
+        req.params.vendorId,
+        req.validatedData.body.status,
+    );
+
+    return sendResponse(
+        res,
+        200,
+        'Vendor status updated successfully.',
+        result,
+    );
+});
+
 export const vendorController = {
     createVendorProfile,
     getMyVendorProfile,
+    getVendors,
+    updateVendorStatus,
 };
