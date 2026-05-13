@@ -3,6 +3,7 @@ import authRoutes from '../modules/auth/auth.routes.js';
 import vendorRoutes from '../modules/vendors/vendor.routes.js';
 import categoryRoutes from '../modules/categories/category.routes.js';
 import productRoutes from '../modules/products/product.routes.js';
+import cartRoutes from '../modules/cart/cart.routes.js';
 
 const router = express.Router();
 
@@ -10,5 +11,6 @@ router.use('/auth', authRoutes);
 router.use('/vendors', vendorRoutes);
 router.use('/categories', categoryRoutes);
 router.use('/products', productRoutes);
+router.use('/cart', cartRoutes);
 
 export default router;
