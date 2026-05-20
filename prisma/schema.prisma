@@ -18,6 +18,30 @@ enum VendorStatus {
   REJECTED
 }
 
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  OUT_OF_STOCK
+  ARCHIVED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
 model User {
   id       String @id @default(cuid())
   fullName String
@@ -29,6 +53,8 @@ model User {
   cart Cart?
 
   vendorProfile Vendor?
+
+  orders Order[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -43,7 +69,8 @@ model Vendor {
   description String?
   status      VendorStatus @default(PENDING)
 
-  products Product[]
+  products   Product[]
+  orderItems OrderItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -61,14 +88,6 @@ model Category {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-}
-
-enum ProductStatus {
-  DRAFT
-  ACTIVE
-  INACTIVE
-  OUT_OF_STOCK
-  ARCHIVED
 }
 
 model Product {
@@ -89,7 +108,8 @@ model Product {
 
   status ProductStatus @default(DRAFT)
 
-  cartItems CartItem[]
+  cartItems  CartItem[]
+  orderItems OrderItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -122,4 +142,43 @@ model CartItem {
   updatedAt DateTime @updatedAt
 
   @@unique([cartId, productId])
+}
+
+// order schema
+
+model OrderItem {
+  id String @id @default(cuid())
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  vendorId String
+  vendor   Vendor @relation(fields: [vendorId], references: [id])
+
+  quantity Int
+
+  price Decimal @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+}
+
+model Order {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  items OrderItem[]
+
+  totalAmount Decimal @db.Decimal(10, 2)
+
+  status OrderStatus @default(PENDING)
+
+  paymentStatus PaymentStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
