@@ -1,4 +1,6 @@
 import { prisma } from '../../config/prisma.js';
+import { stripe } from '../../config/stripe.js';
+import { env } from '../../config/env.js';
 import { AppError } from '../../utils/AppError.js';
 
 const checkout = async (user) => {
@@ -72,20 +74,8 @@ const checkout = async (user) => {
             include: {
                 items: {
                     include: {
-                        product: {
-                            select: {
-                                id: true,
-                                name: true,
-                                slug: true,
-                                price: true,
-                            },
-                        },
-                        vendor: {
-                            select: {
-                                id: true,
-                                storeName: true,
-                            },
-                        },
+                        product: true,
+                        vendor: true,
                     },
                 },
             },
@@ -117,7 +107,40 @@ const checkout = async (user) => {
         return createdOrder;
     });
 
-    return order;
+    const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        customer_email: user.email,
+        line_items: order.items.map((item) => ({
+            price_data: {
+                currency: 'usd',
+                product_data: {
+                    name: item.product.name,
+                },
+                unit_amount: Math.round(Number(item.price) * 100),
+            },
+            quantity: item.quantity,
+        })),
+        success_url: `${env.clientUrl}/payment-success?orderId=${order.id}`,
+        cancel_url: `${env.clientUrl}/payment-cancel?orderId=${order.id}`,
+        metadata: {
+            orderId: order.id,
+            userId: user.id,
+        },
+    });
+
+    await prisma.order.update({
+        where: {
+            id: order.id,
+        },
+        data: {
+            stripeCheckoutSessionId: session.id,
+        },
+    });
+
+    return {
+        orderId: order.id,
+        checkoutUrl: session.url,
+    };
 };
 
 const getMyOrders = async (user) => {
