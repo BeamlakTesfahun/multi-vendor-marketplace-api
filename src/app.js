@@ -6,6 +6,7 @@ import webhookRoutes from './modules/webhook/webhook.routes.js';
 
 import { notFound } from './middlewares/notFound.js';
 import { errorHandler } from './middlewares/errorHandler.js';
+import { globalRateLimiter } from './middlewares/rateLimiter.js';
 
 const app = express();
 
@@ -14,6 +15,7 @@ app.use(cors());
 app.use('/api/v1/webhooks', webhookRoutes);
 
 app.use(express.json());
+app.use(globalRateLimiter);
 
 app.get('/', (req, res) => {
     res.status(200).json({
