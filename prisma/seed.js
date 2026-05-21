@@ -1,50 +1,34 @@
 import 'dotenv/config';
-import bcrypt from 'bcryptjs';
-
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import pg from 'pg';
 
-const { Pool } = pg;
-const pool = new Pool({
+import { seedAdmin } from './seeds/admin.seed.js';
+import { seedUsers } from './seeds/users.seed.js';
+import { seedVendors } from './seeds/vendors.seed.js';
+import { seedCategories } from './seeds/categories.seed.js';
+import { seedProducts } from './seeds/products.seed.js';
+
+const adapter = new PrismaPg({
     connectionString: process.env.DATABASE_URL,
 });
 
-const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-    const existingAdmin = await prisma.user.findUnique({
-        where: {
-            email: 'admin@marketplace.com',
-        },
-    });
+    await seedAdmin(prisma);
+    await seedUsers(prisma);
+    await seedVendors(prisma);
+    await seedCategories(prisma);
+    await seedProducts(prisma);
 
-    if (existingAdmin) {
-        console.log('Admin already exists.');
-        return;
-    }
-
-    const hashedPassword = await bcrypt.hash('admin123', 10);
-
-    await prisma.user.create({
-        data: {
-            fullName: 'Marketplace Admin',
-            email: 'admin@marketplace.com',
-            password: hashedPassword,
-            role: 'ADMIN',
-        },
-    });
-
-    console.log('Admin seeded successfully.');
+    console.log('Database seeded successfully');
 }
 
 main()
     .catch((error) => {
-        console.error(error);
+        console.error('Seed failed:', error);
         process.exit(1);
     })
     .finally(async () => {
         await prisma.$disconnect();
-        await pool.end();
     });
