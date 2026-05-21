@@ -2,6 +2,7 @@ import slugify from 'slugify';
 
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/AppError.js';
+import { clearCacheByPattern } from '../../utils/cache.js';
 
 const createCategory = async (payload) => {
     const slug = slugify(payload.name, {
@@ -23,13 +24,18 @@ const createCategory = async (payload) => {
         );
     }
 
-    return prisma.category.create({
+    const category = await prisma.category.create({
         data: {
             name: payload.name,
             description: payload.description,
             slug,
         },
     });
+
+    await clearCacheByPattern('categories:*');
+    await clearCacheByPattern('category:*');
+
+    return category;
 };
 
 const getCategories = async () => {
@@ -72,7 +78,7 @@ const updateCategory = async (categoryId, payload) => {
           })
         : category.slug;
 
-    return prisma.category.update({
+    const updatedCategory = prisma.category.update({
         where: {
             id: categoryId,
         },
@@ -83,6 +89,11 @@ const updateCategory = async (categoryId, payload) => {
             slug: updatedSlug,
         },
     });
+
+    await clearCacheByPattern('categories:*');
+    await clearCacheByPattern('category:*');
+
+    return updatedCategory;
 };
 
 const deleteCategory = async (categoryId) => {
@@ -101,6 +112,9 @@ const deleteCategory = async (categoryId) => {
             id: categoryId,
         },
     });
+
+    await clearCacheByPattern('categories:*');
+    await clearCacheByPattern('category:*');
 };
 
 export const categoryService = {

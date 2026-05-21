@@ -6,6 +6,7 @@ import { protect } from '../../middlewares/authMiddleware.js';
 import { authorizeRoles } from '../../middlewares/roleMiddleware.js';
 
 import { validateRequest } from '../../middlewares/validateRequest.js';
+import { cacheMiddleware } from '../../middlewares/cacheMiddleware.js';
 
 import {
     createCategorySchema,
@@ -22,9 +23,17 @@ router.post(
     categoryController.createCategory,
 );
 
-router.get('/', categoryController.getCategories);
+router.get(
+    '/',
+    cacheMiddleware('category', 300),
+    categoryController.getCategories,
+);
 
-router.get('/:categoryId', categoryController.getCategoryById);
+router.get(
+    '/:categoryId',
+    cacheMiddleware('category', 300),
+    categoryController.getCategoryById,
+);
 
 router.patch(
     '/:categoryId',
