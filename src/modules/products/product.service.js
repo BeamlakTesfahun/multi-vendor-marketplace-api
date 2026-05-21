@@ -3,6 +3,8 @@ import slugify from 'slugify';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../utils/AppError.js';
 
+import { clearCacheByPattern } from '../../utils/cache.js';
+
 const generateSlug = (name) => {
     return slugify(name, {
         lower: true,
@@ -135,6 +137,9 @@ const createProduct = async (user, payload) => {
             },
         },
     });
+
+    await clearCacheByPattern('products:*');
+    await clearCacheByPattern('product:*');
 
     return product;
 };
@@ -303,7 +308,7 @@ const updateProduct = async (user, productId, payload) => {
         }
     }
 
-    return prisma.product.update({
+    const updatedProduct = await prisma.product.update({
         where: {
             id: productId,
         },
@@ -333,6 +338,11 @@ const updateProduct = async (user, productId, payload) => {
             },
         },
     });
+
+    await clearCacheByPattern('products:*');
+    await clearCacheByPattern('product:*');
+
+    return updatedProduct;
 };
 
 const deleteProduct = async (user, productId) => {
@@ -375,6 +385,9 @@ const deleteProduct = async (user, productId) => {
             id: productId,
         },
     });
+
+    await clearCacheByPattern('products:*');
+    await clearCacheByPattern('product:*');
 };
 
 export const productService = {
