@@ -12,7 +12,7 @@ const createProduct = asyncHandler(async (req, res) => {
 });
 
 const getProducts = asyncHandler(async (req, res) => {
-    const result = await productService.getProducts();
+    const result = await productService.getProducts(req.validatedData.query);
 
     return sendResponse(res, 200, 'Products fetched successfully.', result);
 });

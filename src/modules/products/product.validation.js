@@ -54,3 +54,18 @@ export const updateProductSchema = z.object({
 
     query: z.object({}),
 });
+
+export const getProductsQuerySchema = z.object({
+    body: z.object({}),
+    params: z.object({}),
+    query: z.object({
+        search: z.string().trim().optional(),
+        categoryId: z.string().optional(),
+        minPrice: z.coerce.number().min(0).optional(),
+        maxPrice: z.coerce.number().min(0).optional(),
+        sortBy: z.enum(['createdAt', 'price', 'name']).optional(),
+        sortOrder: z.enum(['asc', 'desc']).optional(),
+        page: z.coerce.number().int().min(1).optional(),
+        limit: z.coerce.number().int().min(1).max(100).optional(),
+    }),
+});

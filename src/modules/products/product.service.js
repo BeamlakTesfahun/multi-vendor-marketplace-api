@@ -144,30 +144,84 @@ const createProduct = async (user, payload) => {
     return product;
 };
 
-const getProducts = async () => {
-    return prisma.product.findMany({
-        where: {
-            status: 'ACTIVE',
-        },
-        orderBy: {
-            createdAt: 'desc',
-        },
-        include: {
-            vendor: {
-                select: {
-                    id: true,
-                    storeName: true,
+const getProducts = async (query) => {
+    const {
+        search,
+        categoryId,
+        minPrice,
+        maxPrice,
+        sortBy = 'createdAt',
+        sortOrder = 'desc',
+        page = 1,
+        limit = 10,
+    } = query;
+
+    const skip = (page - 1) * limit;
+
+    const where = {
+        status: 'ACTIVE',
+        ...(categoryId && { categoryId }),
+        ...(search && {
+            OR: [
+                {
+                    name: {
+                        contains: search,
+                        mode: 'insensitive',
+                    },
+                },
+
+                {
+                    description: {
+                        contains: search,
+                        mode: 'insensitive',
+                    },
+                },
+            ],
+        }),
+        ...((minPrice !== undefined || maxPrice !== undefined) && {
+            price: {
+                ...(minPrice !== undefined && { gte: minPrice }),
+                ...(maxPrice !== undefined && { lte: maxPrice }),
+            },
+        }),
+    };
+
+    const [products, total] = await prisma.$transaction([
+        prisma.product.findMany({
+            where,
+            skip,
+            take: limit,
+            orderBy: {
+                [sortBy]: sortOrder,
+            },
+            include: {
+                vendor: {
+                    select: {
+                        id: true,
+                        storeName: true,
+                    },
+                },
+                category: {
+                    select: {
+                        id: true,
+                        name: true,
+                        slug: true,
+                    },
                 },
             },
-            category: {
-                select: {
-                    id: true,
-                    name: true,
-                    slug: true,
-                },
-            },
+        }),
+        prisma.product.count({ where }),
+    ]);
+
+    return {
+        meta: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit),
         },
-    });
+        data: products,
+    };
 };
 
 const getProductById = async (productId) => {

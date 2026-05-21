@@ -10,11 +10,17 @@ import { cacheMiddleware } from '../../middlewares/cacheMiddleware.js';
 import {
     createProductSchema,
     updateProductSchema,
+    getProductsQuerySchema,
 } from './product.validation.js';
 
 const router = express.Router();
 
-router.get('/', cacheMiddleware('product', 300), productController.getProducts);
+router.get(
+    '/',
+    cacheMiddleware('product', 300),
+    validateRequest(getProductsQuerySchema),
+    productController.getProducts,
+);
 
 router.post(
     '/',
