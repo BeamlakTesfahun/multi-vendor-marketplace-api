@@ -1,6 +1,7 @@
 import { stripe } from '../../config/stripe.js';
 import { env } from '../../config/env.js';
 import { prisma } from '../../config/prisma.js';
+import { addOrderConfirmationEmailJob } from '../../jobs/producers/email.producer.js';
 
 export const handleStripeWebhook = async (req, res, next) => {
     try {
@@ -20,7 +21,7 @@ export const handleStripeWebhook = async (req, res, next) => {
             const orderId = session.metadata?.orderId;
 
             if (orderId) {
-                await prisma.order.update({
+                const updatedOrder = await prisma.order.update({
                     where: {
                         id: orderId,
                     },
@@ -33,6 +34,21 @@ export const handleStripeWebhook = async (req, res, next) => {
                                 : session.payment_intent?.id,
                         paidAt: new Date(),
                     },
+                    include: {
+                        user: {
+                            select: {
+                                fullName: true,
+                                email: true,
+                            },
+                        },
+                    },
+                });
+
+                await addOrderConfirmationEmailJob({
+                    to: updatedOrder.user.email,
+                    customerName: updatedOrder.user.fullName,
+                    orderId: updatedOrder.id,
+                    totalAmount: Number(updatedOrder.totalAmount),
                 });
             }
         }
