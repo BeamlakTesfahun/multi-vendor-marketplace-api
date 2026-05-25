@@ -1,59 +1,50 @@
 import 'dotenv/config';
-import { Worker } from 'bullmq';
 import nodemailer from 'nodemailer';
+import { createEmailWorker } from './createEmailWorker.js';
+
+const queueName = process.env.EMAIL_QUEUE_NAME || 'email-queue';
+
+const connection = {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: Number(process.env.REDIS_PORT) || 6379,
+};
 
 const transporter = nodemailer.createTransport({
     service: 'gmail',
-    secure: false,
     auth: {
         user: process.env.MAIL_USER,
         pass: process.env.MAIL_PASS,
     },
 });
 
-const worker = new Worker(
-    'email-queue',
-    async (job) => {
-        console.log('Worker received job:', job.id);
-        console.log('Job name:', job.name);
-        console.log('Job data:', job.data);
+const sendEmail = async ({ to, customerName, orderId, totalAmount }) => {
+    const info = await transporter.sendMail({
+        from: process.env.MAIL_FROM,
+        to,
+        subject: 'Your order has been confirmed',
+        html: `
+            <h2>Order Confirmed</h2>
+            <p>Hello ${customerName},</p>
+            <p>Your order <strong>${orderId}</strong> has been confirmed.</p>
+            <p>Total: <strong>$${totalAmount}</strong></p>
+        `,
+    });
 
-        if (job.name === 'order-confirmation-email') {
-            const { to, customerName, orderId, totalAmount } = job.data;
+    console.log('Email sent:', info.messageId);
+};
 
-            console.log('Sending email to:', to);
-
-            const info = await transporter.sendMail({
-                from: process.env.MAIL_FROM,
-                to,
-                subject: 'Your order has been confirmed',
-                html: `
-                    <h2>Order Confirmed</h2>
-                    <p>Hello ${customerName},</p>
-                    <p>Your order <strong>${orderId}</strong> has been confirmed.</p>
-                    <p>Total: <strong>$${totalAmount}</strong></p>
-                `,
-            });
-
-            console.log('Email sent successfully');
-            console.log('Message ID:', info.messageId);
-        }
-    },
-    {
-        connection: {
-            host: process.env.REDIS_HOST || 'localhost',
-            port: Number(process.env.REDIS_PORT) || 6379,
-        },
-    },
-);
+const worker = createEmailWorker({
+    queueName,
+    connection,
+    sendEmail,
+});
 
 worker.on('completed', (job) => {
     console.log(`Email job completed: ${job.id}`);
 });
 
 worker.on('failed', (job, error) => {
-    console.error(`Email job failed: ${job?.id}`);
-    console.error(error);
+    console.error(`Email job failed: ${job?.id}`, error.message);
 });
 
 worker.on('error', (error) => {
