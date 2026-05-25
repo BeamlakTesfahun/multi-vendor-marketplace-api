@@ -45,10 +45,12 @@ describe('Webhook API route', () => {
         const response = await request(app)
             .post('/api/v1/webhooks/stripe')
             .set('stripe-signature', 'test_signature')
-            .send(Buffer.from(JSON.stringify(event)));
+            .set('Content-Type', 'application/json')
+            .send(JSON.stringify(event));
 
         expect(response.status).toBe(200);
         expect(response.body.received).toBe(true);
+        expect(response.body.processed).toBe(true);
         expect(mockConstructEvent).toHaveBeenCalledTimes(1);
         expect(mockProcessStripeEvent).toHaveBeenCalledWith(event);
     });
@@ -61,7 +63,8 @@ describe('Webhook API route', () => {
         const response = await request(app)
             .post('/api/v1/webhooks/stripe')
             .set('stripe-signature', 'bad_signature')
-            .send(Buffer.from(JSON.stringify({ id: 'evt_bad' })));
+            .set('Content-Type', 'application/json')
+            .send(JSON.stringify({ id: 'evt_bad' }));
 
         expect(response.status).toBe(500);
         expect(response.body.success).toBe(false);
