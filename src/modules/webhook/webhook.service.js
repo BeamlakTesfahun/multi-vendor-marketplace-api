@@ -10,6 +10,7 @@ export const processStripeEvent = async (event) => {
 
     if (existingEvent?.processed) {
         return {
+            received: true,
             duplicate: true,
             processed: false,
         };
@@ -20,13 +21,21 @@ export const processStripeEvent = async (event) => {
         const orderId = session.metadata?.orderId;
 
         if (orderId) {
-            const existingOrder = await prisma.order.findUnique({
+            const order = await prisma.order.findUnique({
                 where: {
                     id: orderId,
                 },
+                include: {
+                    user: {
+                        select: {
+                            fullName: true,
+                            email: true,
+                        },
+                    },
+                },
             });
 
-            if (existingOrder && existingOrder.paymentStatus !== 'PAID') {
+            if (order && order.paymentStatus !== 'PAID') {
                 const updatedOrder = await prisma.order.update({
                     where: {
                         id: orderId,
@@ -76,6 +85,7 @@ export const processStripeEvent = async (event) => {
     });
 
     return {
+        received: true,
         duplicate: false,
         processed: true,
     };

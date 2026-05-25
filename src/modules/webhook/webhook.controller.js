@@ -14,10 +14,7 @@ export const handleStripeWebhook = async (req, res, next) => {
 
         const result = await processStripeEvent(event);
 
-        return res.status(200).json({
-            received: true,
-            ...result,
-        });
+        return res.status(200).json(result);
     } catch (error) {
         next(error);
     }

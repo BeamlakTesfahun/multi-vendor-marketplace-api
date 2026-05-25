@@ -1,95 +1,52 @@
-import { Queue } from 'bullmq';
+import { emailQueue } from '../../src/jobs/queues/email.queue.js';
+import { addOrderConfirmationEmailJob } from '../../src/jobs/producers/email.producer.js';
 
-const connection = {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: Number(process.env.REDIS_PORT) || 6379,
-};
-
-const queueName = `email-producer-test-${Date.now()}`;
-
-describe('Email producer idempotency', () => {
-    let queue;
-
-    beforeEach(() => {
-        queue = new Queue(queueName, { connection });
+describe('Email producer', () => {
+    beforeEach(async () => {
+        await emailQueue.drain(true);
     });
 
-    afterEach(async () => {
-        await queue.drain(true);
-        await queue.close();
+    afterAll(async () => {
+        await emailQueue.close();
     });
 
-    it('does not create duplicate order confirmation jobs for the same order', async () => {
+    it('does not enqueue duplicate confirmation jobs for same order', async () => {
         const payload = {
             to: 'customer@example.com',
             customerName: 'John Customer',
             orderId: 'order_test_001',
-            totalAmount: 99.99,
+            totalAmount: 100,
         };
 
-        const firstJob = await queue.add('order-confirmation-email', payload, {
-            jobId: `order-confirmation-${payload.orderId}`,
-            removeOnComplete: false,
-            removeOnFail: false,
-        });
-
-        const secondJob = await queue.add('order-confirmation-email', payload, {
-            jobId: `order-confirmation-${payload.orderId}`,
-            removeOnComplete: false,
-            removeOnFail: false,
-        });
+        const firstJob = await addOrderConfirmationEmailJob(payload);
+        const secondJob = await addOrderConfirmationEmailJob(payload);
 
         expect(firstJob.id).toBe(secondJob.id);
 
-        const waitingJobs = await queue.getWaiting();
-        const delayedJobs = await queue.getDelayed();
-        const activeJobs = await queue.getActive();
+        const waitingJobs = await emailQueue.getWaiting();
 
-        const allPendingJobs = [...waitingJobs, ...delayedJobs, ...activeJobs];
-
-        expect(allPendingJobs).toHaveLength(1);
-        expect(allPendingJobs[0].data.orderId).toBe(payload.orderId);
+        expect(waitingJobs).toHaveLength(1);
+        expect(waitingJobs[0].data.orderId).toBe(payload.orderId);
     });
 
-    it('creates separate jobs for different orders', async () => {
-        const firstPayload = {
+    it('creates separate confirmation jobs for different orders', async () => {
+        const firstJob = await addOrderConfirmationEmailJob({
             to: 'customer@example.com',
             customerName: 'John Customer',
             orderId: 'order_test_001',
-            totalAmount: 99.99,
-        };
+            totalAmount: 100,
+        });
 
-        const secondPayload = {
+        const secondJob = await addOrderConfirmationEmailJob({
             to: 'customer@example.com',
             customerName: 'John Customer',
             orderId: 'order_test_002',
-            totalAmount: 49.99,
-        };
-
-        const firstJob = await queue.add(
-            'order-confirmation-email',
-            firstPayload,
-            {
-                jobId: `order-confirmation-${firstPayload.orderId}`,
-                removeOnComplete: false,
-                removeOnFail: false,
-            },
-        );
-
-        const secondJob = await queue.add(
-            'order-confirmation-email',
-            secondPayload,
-            {
-                jobId: `order-confirmation-${secondPayload.orderId}`,
-                removeOnComplete: false,
-                removeOnFail: false,
-            },
-        );
+            totalAmount: 200,
+        });
 
         expect(firstJob.id).not.toBe(secondJob.id);
 
-        const waitingJobs = await queue.getWaiting();
-
+        const waitingJobs = await emailQueue.getWaiting();
         expect(waitingJobs).toHaveLength(2);
     });
 });
