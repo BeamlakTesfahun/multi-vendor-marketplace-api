@@ -10,14 +10,24 @@ export const handleStripeWebhook = async (req, res, next) => {
         const event = stripe.webhooks.constructEvent(
             req.body,
             signature,
-            // signature,
             env.stripeWebhookSecret,
         );
 
-        console.log('event', event);
+        const existingEvent = await prisma.webhookEvent.findUnique({
+            where: {
+                stripeEventId: event.id,
+            },
+        });
+
+        if (existingEvent?.processed) {
+            return res.status(200).json({
+                received: true,
+                duplicate: true,
+            });
+        }
+
         if (event.type === 'checkout.session.completed') {
             const session = event.data.object;
-
             const orderId = session.metadata?.orderId;
 
             if (orderId) {
@@ -53,8 +63,25 @@ export const handleStripeWebhook = async (req, res, next) => {
             }
         }
 
-        return res.status(200).json({ received: true });
+        await prisma.webhookEvent.upsert({
+            where: {
+                stripeEventId: event.id,
+            },
+            update: {
+                type: event.type,
+                processed: true,
+            },
+            create: {
+                stripeEventId: event.id,
+                type: event.type,
+                processed: true,
+            },
+        });
+
+        return res.status(200).json({
+            received: true,
+        });
     } catch (error) {
-        return next(error);
+        next(error);
     }
 };
