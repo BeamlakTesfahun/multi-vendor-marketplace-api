@@ -32,7 +32,11 @@ describe('Stripe webhook API route', () => {
         await prisma.user.deleteMany();
     });
 
-    it('marks order paid, stores event, and queues email through the real webhook route', async () => {
+    afterAll(async () => {
+        await prisma.$disconnect();
+    });
+
+    it('marks order paid, stores webhook event, and queues confirmation email through the real route', async () => {
         const user = await prisma.user.create({
             data: {
                 fullName: 'Webhook Route User',
@@ -51,7 +55,7 @@ describe('Stripe webhook API route', () => {
             },
         });
 
-        const event = {
+        const stripeEvent = {
             id: 'evt_route_real_001',
             type: 'checkout.session.completed',
             data: {
@@ -64,18 +68,20 @@ describe('Stripe webhook API route', () => {
             },
         };
 
-        mockConstructEvent.mockReturnValue(event);
+        mockConstructEvent.mockReturnValue(stripeEvent);
 
         const response = await request(app)
             .post('/api/v1/webhooks/stripe')
             .set('stripe-signature', 'test_signature')
             .set('Content-Type', 'application/json')
-            .send(JSON.stringify(event));
+            .send(JSON.stringify(stripeEvent));
 
         expect(response.status).toBe(200);
         expect(response.body.received).toBe(true);
         expect(response.body.processed).toBe(true);
         expect(response.body.duplicate).toBe(false);
+
+        expect(mockConstructEvent).toHaveBeenCalledTimes(1);
 
         const updatedOrder = await prisma.order.findUnique({
             where: {
@@ -90,7 +96,7 @@ describe('Stripe webhook API route', () => {
 
         const webhookEvents = await prisma.webhookEvent.findMany({
             where: {
-                stripeEventId: event.id,
+                stripeEventId: stripeEvent.id,
             },
         });
 
@@ -106,7 +112,7 @@ describe('Stripe webhook API route', () => {
         });
     });
 
-    it('does not process duplicate Stripe webhook events through the route', async () => {
+    it('does not process duplicate Stripe webhook events through the real route', async () => {
         const user = await prisma.user.create({
             data: {
                 fullName: 'Duplicate Route User',
@@ -125,7 +131,7 @@ describe('Stripe webhook API route', () => {
             },
         });
 
-        const event = {
+        const stripeEvent = {
             id: 'evt_route_duplicate_001',
             type: 'checkout.session.completed',
             data: {
@@ -138,19 +144,19 @@ describe('Stripe webhook API route', () => {
             },
         };
 
-        mockConstructEvent.mockReturnValue(event);
+        mockConstructEvent.mockReturnValue(stripeEvent);
 
         const firstResponse = await request(app)
             .post('/api/v1/webhooks/stripe')
             .set('stripe-signature', 'test_signature')
             .set('Content-Type', 'application/json')
-            .send(JSON.stringify(event));
+            .send(JSON.stringify(stripeEvent));
 
         const secondResponse = await request(app)
             .post('/api/v1/webhooks/stripe')
             .set('stripe-signature', 'test_signature')
             .set('Content-Type', 'application/json')
-            .send(JSON.stringify(event));
+            .send(JSON.stringify(stripeEvent));
 
         expect(firstResponse.status).toBe(200);
         expect(secondResponse.status).toBe(200);
@@ -161,11 +167,41 @@ describe('Stripe webhook API route', () => {
 
         const webhookEvents = await prisma.webhookEvent.findMany({
             where: {
-                stripeEventId: event.id,
+                stripeEventId: stripeEvent.id,
             },
         });
 
         expect(webhookEvents).toHaveLength(1);
         expect(mockAddOrderConfirmationEmailJob).toHaveBeenCalledTimes(1);
+
+        const updatedOrder = await prisma.order.findUnique({
+            where: {
+                id: order.id,
+            },
+        });
+
+        expect(updatedOrder.paymentStatus).toBe('PAID');
+
+        expect(updatedOrder.status).toBe('CONFIRMED');
+    });
+
+    it('returns an error when Stripe signature verification fails', async () => {
+        mockConstructEvent.mockImplementation(() => {
+            throw new Error('Invalid Stripe signature');
+        });
+
+        const response = await request(app)
+            .post('/api/v1/webhooks/stripe')
+            .set('stripe-signature', 'bad_signature')
+            .set('Content-Type', 'application/json')
+            .send(
+                JSON.stringify({
+                    id: 'evt_bad_signature',
+                }),
+            );
+
+        expect(response.status).toBe(500);
+
+        expect(response.body.success).toBe(false);
     });
 });
