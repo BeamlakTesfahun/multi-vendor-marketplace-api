@@ -18,17 +18,17 @@ jest.unstable_mockModule(
     }),
 );
 
-const { default: app } = await import('../../src/app.js');
 const request = (await import('supertest')).default;
+const { default: app } = await import('../../src/app.js');
 
-describe('Webhook API', () => {
+describe('Webhook API route', () => {
     beforeEach(() => {
         jest.clearAllMocks();
     });
 
-    it('accepts a valid Stripe webhook event', async () => {
+    it('accepts a valid Stripe webhook and delegates processing', async () => {
         const event = {
-            id: 'evt_api_test_001',
+            id: 'evt_route_test_001',
             type: 'checkout.session.completed',
             data: {
                 object: {},
@@ -49,12 +49,11 @@ describe('Webhook API', () => {
 
         expect(response.status).toBe(200);
         expect(response.body.received).toBe(true);
-        expect(response.body.processed).toBe(true);
         expect(mockConstructEvent).toHaveBeenCalledTimes(1);
         expect(mockProcessStripeEvent).toHaveBeenCalledWith(event);
     });
 
-    it('returns error when Stripe signature verification fails', async () => {
+    it('returns an error when Stripe signature verification fails', async () => {
         mockConstructEvent.mockImplementation(() => {
             throw new Error('Invalid signature');
         });

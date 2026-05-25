@@ -7,6 +7,7 @@ jest.unstable_mockModule('../../src/jobs/producers/email.producer.js', () => ({
 }));
 
 const { prisma } = await import('../../src/config/prisma.js');
+
 const { processStripeEvent } =
     await import('../../src/modules/webhook/webhook.service.js');
 
@@ -17,6 +18,11 @@ describe('Stripe webhook processing', () => {
         await prisma.webhookEvent.deleteMany();
         await prisma.orderItem.deleteMany();
         await prisma.order.deleteMany();
+        await prisma.cartItem.deleteMany();
+        await prisma.cart.deleteMany();
+        await prisma.product.deleteMany();
+        await prisma.category.deleteMany();
+        await prisma.vendor.deleteMany();
         await prisma.user.deleteMany();
     });
 
@@ -75,6 +81,15 @@ describe('Stripe webhook processing', () => {
             orderId: order.id,
             totalAmount: 100,
         });
+
+        const webhookEvents = await prisma.webhookEvent.findMany({
+            where: {
+                stripeEventId: event.id,
+            },
+        });
+
+        expect(webhookEvents).toHaveLength(1);
+        expect(webhookEvents[0].processed).toBe(true);
     });
 
     it('does not process the same Stripe event twice', async () => {
@@ -113,8 +128,19 @@ describe('Stripe webhook processing', () => {
         const secondResult = await processStripeEvent(event);
 
         expect(firstResult.processed).toBe(true);
+        expect(firstResult.duplicate).toBe(false);
+
         expect(secondResult.duplicate).toBe(true);
         expect(secondResult.processed).toBe(false);
+
+        const updatedOrder = await prisma.order.findUnique({
+            where: {
+                id: order.id,
+            },
+        });
+
+        expect(updatedOrder.paymentStatus).toBe('PAID');
+        expect(updatedOrder.status).toBe('CONFIRMED');
 
         expect(mockAddOrderConfirmationEmailJob).toHaveBeenCalledTimes(1);
 
@@ -163,6 +189,8 @@ describe('Stripe webhook processing', () => {
         const result = await processStripeEvent(event);
 
         expect(result.processed).toBe(true);
+        expect(result.duplicate).toBe(false);
+
         expect(mockAddOrderConfirmationEmailJob).not.toHaveBeenCalled();
 
         const updatedOrder = await prisma.order.findUnique({
@@ -173,5 +201,112 @@ describe('Stripe webhook processing', () => {
 
         expect(updatedOrder.paymentStatus).toBe('PAID');
         expect(updatedOrder.status).toBe('CONFIRMED');
+    });
+
+    it('does not change order items or product stock when duplicate webhook is received', async () => {
+        const customer = await prisma.user.create({
+            data: {
+                fullName: 'Stock Customer',
+                email: 'stock-customer@test.com',
+                password: 'hashed-password',
+                role: 'CUSTOMER',
+            },
+        });
+
+        const vendorUser = await prisma.user.create({
+            data: {
+                fullName: 'Stock Vendor',
+                email: 'stock-vendor@test.com',
+                password: 'hashed-password',
+                role: 'VENDOR',
+            },
+        });
+
+        const vendor = await prisma.vendor.create({
+            data: {
+                userId: vendorUser.id,
+                storeName: 'Stock Vendor Store',
+                status: 'APPROVED',
+            },
+        });
+
+        const category = await prisma.category.create({
+            data: {
+                name: 'Stock Category',
+                slug: 'stock-category',
+            },
+        });
+
+        const product = await prisma.product.create({
+            data: {
+                vendorId: vendor.id,
+                categoryId: category.id,
+                name: 'Stock Product',
+                slug: 'stock-product',
+                price: 50,
+                stock: 7,
+                status: 'ACTIVE',
+            },
+        });
+
+        const order = await prisma.order.create({
+            data: {
+                userId: customer.id,
+                totalAmount: 100,
+                status: 'PENDING',
+                paymentStatus: 'PENDING',
+                items: {
+                    create: {
+                        productId: product.id,
+                        vendorId: vendor.id,
+                        quantity: 2,
+                        price: 50,
+                    },
+                },
+            },
+            include: {
+                items: true,
+            },
+        });
+
+        const event = {
+            id: 'evt_stock_duplicate_001',
+            type: 'checkout.session.completed',
+            data: {
+                object: {
+                    metadata: {
+                        orderId: order.id,
+                    },
+                    payment_intent: 'pi_stock_duplicate_001',
+                },
+            },
+        };
+
+        await processStripeEvent(event);
+        await processStripeEvent(event);
+
+        const updatedProduct = await prisma.product.findUnique({
+            where: {
+                id: product.id,
+            },
+        });
+
+        const orderItems = await prisma.orderItem.findMany({
+            where: {
+                orderId: order.id,
+            },
+        });
+
+        const webhookEvents = await prisma.webhookEvent.findMany({
+            where: {
+                stripeEventId: event.id,
+            },
+        });
+
+        expect(updatedProduct.stock).toBe(7);
+        expect(orderItems).toHaveLength(1);
+        expect(orderItems[0].quantity).toBe(2);
+        expect(webhookEvents).toHaveLength(1);
+        expect(mockAddOrderConfirmationEmailJob).toHaveBeenCalledTimes(1);
     });
 });
