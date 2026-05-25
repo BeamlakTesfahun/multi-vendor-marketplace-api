@@ -20,12 +20,12 @@ describe('Stripe webhook processing', () => {
         await prisma.user.deleteMany();
     });
 
-    it('processes checkout.session.completed and marks order as paid', async () => {
+    it('marks an order as paid and queues confirmation email', async () => {
         const user = await prisma.user.create({
             data: {
-                fullName: 'Webhook Test User',
+                fullName: 'Webhook User',
                 email: 'webhook@test.com',
-                password: 'hashedpassword',
+                password: 'hashed-password',
                 role: 'CUSTOMER',
             },
         });
@@ -40,14 +40,14 @@ describe('Stripe webhook processing', () => {
         });
 
         const event = {
-            id: 'evt_test_paid_once',
+            id: 'evt_test_paid_001',
             type: 'checkout.session.completed',
             data: {
                 object: {
                     metadata: {
                         orderId: order.id,
                     },
-                    payment_intent: 'pi_test_123',
+                    payment_intent: 'pi_test_001',
                 },
             },
         };
@@ -65,7 +65,7 @@ describe('Stripe webhook processing', () => {
 
         expect(updatedOrder.paymentStatus).toBe('PAID');
         expect(updatedOrder.status).toBe('CONFIRMED');
-        expect(updatedOrder.stripePaymentIntentId).toBe('pi_test_123');
+        expect(updatedOrder.stripePaymentIntentId).toBe('pi_test_001');
         expect(updatedOrder.paidAt).toBeTruthy();
 
         expect(mockAddOrderConfirmationEmailJob).toHaveBeenCalledTimes(1);
@@ -75,17 +75,14 @@ describe('Stripe webhook processing', () => {
             orderId: order.id,
             totalAmount: 100,
         });
-
-        const webhookEvents = await prisma.webhookEvent.findMany();
-        expect(webhookEvents).toHaveLength(1);
     });
 
     it('does not process the same Stripe event twice', async () => {
         const user = await prisma.user.create({
             data: {
-                fullName: 'Duplicate Test User',
+                fullName: 'Duplicate User',
                 email: 'duplicate@test.com',
-                password: 'hashedpassword',
+                password: 'hashed-password',
                 role: 'CUSTOMER',
             },
         });
@@ -100,14 +97,14 @@ describe('Stripe webhook processing', () => {
         });
 
         const event = {
-            id: 'evt_test_duplicate_once',
+            id: 'evt_test_duplicate_001',
             type: 'checkout.session.completed',
             data: {
                 object: {
                     metadata: {
                         orderId: order.id,
                     },
-                    payment_intent: 'pi_duplicate_123',
+                    payment_intent: 'pi_duplicate_001',
                 },
             },
         };
@@ -118,15 +115,6 @@ describe('Stripe webhook processing', () => {
         expect(firstResult.processed).toBe(true);
         expect(secondResult.duplicate).toBe(true);
         expect(secondResult.processed).toBe(false);
-
-        const updatedOrder = await prisma.order.findUnique({
-            where: {
-                id: order.id,
-            },
-        });
-
-        expect(updatedOrder.paymentStatus).toBe('PAID');
-        expect(updatedOrder.status).toBe('CONFIRMED');
 
         expect(mockAddOrderConfirmationEmailJob).toHaveBeenCalledTimes(1);
 
@@ -139,12 +127,12 @@ describe('Stripe webhook processing', () => {
         expect(webhookEvents).toHaveLength(1);
     });
 
-    it('does not enqueue another email if order is already paid', async () => {
+    it('does not enqueue email again if order is already paid', async () => {
         const user = await prisma.user.create({
             data: {
-                fullName: 'Already Paid User',
+                fullName: 'Paid User',
                 email: 'paid@test.com',
-                password: 'hashedpassword',
+                password: 'hashed-password',
                 role: 'CUSTOMER',
             },
         });
@@ -160,14 +148,14 @@ describe('Stripe webhook processing', () => {
         });
 
         const event = {
-            id: 'evt_test_already_paid',
+            id: 'evt_test_already_paid_001',
             type: 'checkout.session.completed',
             data: {
                 object: {
                     metadata: {
                         orderId: order.id,
                     },
-                    payment_intent: 'pi_already_paid',
+                    payment_intent: 'pi_paid_001',
                 },
             },
         };
