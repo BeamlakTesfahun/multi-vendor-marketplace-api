@@ -10,7 +10,7 @@ describe('Email producer', () => {
         await emailQueue.close();
     });
 
-    it('does not enqueue duplicate confirmation jobs for same order', async () => {
+    it('does not enqueue duplicate confirmation jobs for the same order', async () => {
         const payload = {
             to: 'customer@example.com',
             customerName: 'John Customer',
@@ -23,10 +23,10 @@ describe('Email producer', () => {
 
         expect(firstJob.id).toBe(secondJob.id);
 
-        const waitingJobs = await emailQueue.getWaiting();
+        const jobs = await emailQueue.getJobs(['waiting', 'delayed', 'active']);
 
-        expect(waitingJobs).toHaveLength(1);
-        expect(waitingJobs[0].data.orderId).toBe(payload.orderId);
+        expect(jobs).toHaveLength(1);
+        expect(jobs[0].data.orderId).toBe(payload.orderId);
     });
 
     it('creates separate confirmation jobs for different orders', async () => {
@@ -46,7 +46,8 @@ describe('Email producer', () => {
 
         expect(firstJob.id).not.toBe(secondJob.id);
 
-        const waitingJobs = await emailQueue.getWaiting();
-        expect(waitingJobs).toHaveLength(2);
+        const jobs = await emailQueue.getJobs(['waiting', 'delayed', 'active']);
+
+        expect(jobs).toHaveLength(2);
     });
 });
