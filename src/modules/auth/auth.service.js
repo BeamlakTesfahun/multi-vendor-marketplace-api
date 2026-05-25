@@ -4,12 +4,7 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../../config/prisma.js';
 import { env } from '../../config/env.js';
 import { AppError } from '../../utils/AppError.js';
-
-const generateToken = (userId) => {
-    return jwt.sign({ userId }, env.jwtSecret, {
-        expiresIn: env.jwtExpiresIn || '7d',
-    });
-};
+import { generateToken } from '../../utils/generateToken.js';
 
 const registerUser = async (payload) => {
     const { fullName, email, password, role } = payload;
