@@ -309,4 +309,116 @@ describe('Stripe webhook processing', () => {
         expect(webhookEvents).toHaveLength(1);
         expect(mockAddOrderConfirmationEmailJob).toHaveBeenCalledTimes(1);
     });
+
+    it('does not decrement stock again when duplicate payment webhook is processed', async () => {
+        const customer = await prisma.user.create({
+            data: {
+                fullName: 'Inventory Customer',
+                email: 'inventory-customer@test.com',
+                password: 'hashed-password',
+                role: 'CUSTOMER',
+            },
+        });
+
+        const vendorUser = await prisma.user.create({
+            data: {
+                fullName: 'Inventory Vendor',
+                email: 'inventory-vendor@test.com',
+                password: 'hashed-password',
+                role: 'VENDOR',
+            },
+        });
+
+        const vendor = await prisma.vendor.create({
+            data: {
+                userId: vendorUser.id,
+                storeName: 'Inventory Store',
+                status: 'APPROVED',
+            },
+        });
+
+        const category = await prisma.category.create({
+            data: {
+                name: 'Inventory Category',
+                slug: 'inventory-category',
+            },
+        });
+
+        const product = await prisma.product.create({
+            data: {
+                vendorId: vendor.id,
+                categoryId: category.id,
+                name: 'Inventory Product',
+                slug: 'inventory-product',
+                price: 40,
+                stock: 8,
+                status: 'ACTIVE',
+            },
+        });
+
+        const order = await prisma.order.create({
+            data: {
+                userId: customer.id,
+                totalAmount: 80,
+                status: 'PENDING',
+                paymentStatus: 'PENDING',
+                items: {
+                    create: {
+                        productId: product.id,
+                        vendorId: vendor.id,
+                        quantity: 2,
+                        price: 40,
+                    },
+                },
+            },
+            include: {
+                items: true,
+            },
+        });
+
+        const event = {
+            id: 'evt_inventory_duplicate_001',
+            type: 'checkout.session.completed',
+            data: {
+                object: {
+                    metadata: {
+                        orderId: order.id,
+                    },
+                    payment_intent: 'pi_inventory_duplicate_001',
+                },
+            },
+        };
+
+        await processStripeEvent(event);
+        await processStripeEvent(event);
+
+        const updatedProduct = await prisma.product.findUnique({
+            where: {
+                id: product.id,
+            },
+        });
+
+        const updatedOrder = await prisma.order.findUnique({
+            where: {
+                id: order.id,
+            },
+            include: {
+                items: true,
+            },
+        });
+
+        const webhookEvents = await prisma.webhookEvent.findMany({
+            where: {
+                stripeEventId: event.id,
+            },
+        });
+
+        expect(updatedProduct.stock).toBe(8);
+        expect(updatedOrder.paymentStatus).toBe('PAID');
+        expect(updatedOrder.status).toBe('CONFIRMED');
+        expect(updatedOrder.items).toHaveLength(1);
+        expect(updatedOrder.items[0].quantity).toBe(2);
+        expect(webhookEvents).toHaveLength(1);
+        expect(mockAddOrderConfirmationEmailJob).toHaveBeenCalledTimes(1);
+    });
 });
