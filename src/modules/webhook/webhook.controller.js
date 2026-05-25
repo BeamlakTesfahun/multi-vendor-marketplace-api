@@ -1,7 +1,6 @@
 import { stripe } from '../../config/stripe.js';
 import { env } from '../../config/env.js';
-import { prisma } from '../../config/prisma.js';
-import { addOrderConfirmationEmailJob } from '../../jobs/producers/email.producer.js';
+import { processStripeEvent } from './webhook.service.js';
 
 export const handleStripeWebhook = async (req, res, next) => {
     try {
@@ -13,73 +12,11 @@ export const handleStripeWebhook = async (req, res, next) => {
             env.stripeWebhookSecret,
         );
 
-        const existingEvent = await prisma.webhookEvent.findUnique({
-            where: {
-                stripeEventId: event.id,
-            },
-        });
-
-        if (existingEvent?.processed) {
-            return res.status(200).json({
-                received: true,
-                duplicate: true,
-            });
-        }
-
-        if (event.type === 'checkout.session.completed') {
-            const session = event.data.object;
-            const orderId = session.metadata?.orderId;
-
-            if (orderId) {
-                const updatedOrder = await prisma.order.update({
-                    where: {
-                        id: orderId,
-                    },
-                    data: {
-                        paymentStatus: 'PAID',
-                        status: 'CONFIRMED',
-                        stripePaymentIntentId:
-                            typeof session.payment_intent === 'string'
-                                ? session.payment_intent
-                                : session.payment_intent?.id,
-                        paidAt: new Date(),
-                    },
-                    include: {
-                        user: {
-                            select: {
-                                fullName: true,
-                                email: true,
-                            },
-                        },
-                    },
-                });
-
-                await addOrderConfirmationEmailJob({
-                    to: updatedOrder.user.email,
-                    customerName: updatedOrder.user.fullName,
-                    orderId: updatedOrder.id,
-                    totalAmount: Number(updatedOrder.totalAmount),
-                });
-            }
-        }
-
-        await prisma.webhookEvent.upsert({
-            where: {
-                stripeEventId: event.id,
-            },
-            update: {
-                type: event.type,
-                processed: true,
-            },
-            create: {
-                stripeEventId: event.id,
-                type: event.type,
-                processed: true,
-            },
-        });
+        const result = await processStripeEvent(event);
 
         return res.status(200).json({
             received: true,
+            ...result,
         });
     } catch (error) {
         next(error);

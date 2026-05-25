@@ -7,21 +7,20 @@ jest.unstable_mockModule('../../src/jobs/producers/email.producer.js', () => ({
 }));
 
 const { prisma } = await import('../../src/config/prisma.js');
+const { processStripeEvent } =
+    await import('../../src/modules/webhook/webhook.service.js');
 
-describe('Stripe webhook idempotency behavior', () => {
+describe('Stripe webhook processing', () => {
     beforeEach(async () => {
         jest.clearAllMocks();
 
         await prisma.webhookEvent.deleteMany();
+        await prisma.orderItem.deleteMany();
         await prisma.order.deleteMany();
         await prisma.user.deleteMany();
     });
 
-    afterAll(async () => {
-        await prisma.$disconnect();
-    });
-
-    it('processes a Stripe event only once', async () => {
+    it('processes checkout.session.completed and marks order as paid', async () => {
         const user = await prisma.user.create({
             data: {
                 fullName: 'Webhook Test User',
@@ -40,62 +39,85 @@ describe('Stripe webhook idempotency behavior', () => {
             },
         });
 
-        const stripeEventId = 'evt_test_unique_001';
-
-        const processWebhook = async () => {
-            const existingEvent = await prisma.webhookEvent.findUnique({
-                where: {
-                    stripeEventId: stripeEventId,
+        const event = {
+            id: 'evt_test_paid_once',
+            type: 'checkout.session.completed',
+            data: {
+                object: {
+                    metadata: {
+                        orderId: order.id,
+                    },
+                    payment_intent: 'pi_test_123',
                 },
-            });
-
-            if (existingEvent?.processed) {
-                return 'duplicate';
-            }
-
-            const updatedOrder = await prisma.order.update({
-                where: {
-                    id: order.id,
-                },
-                data: {
-                    paymentStatus: 'PAID',
-                    status: 'CONFIRMED',
-                },
-                include: {
-                    user: true,
-                },
-            });
-
-            await mockAddOrderConfirmationEmailJob({
-                to: updatedOrder.user.email,
-                customerName: updatedOrder.user.fullName,
-                orderId: updatedOrder.id,
-                totalAmount: Number(updatedOrder.totalAmount),
-            });
-
-            await prisma.webhookEvent.upsert({
-                where: {
-                    stripeEventId: stripeEventId,
-                },
-                update: {
-                    processed: true,
-                    type: 'checkout.session.completed',
-                },
-                create: {
-                    stripeEventId: stripeEventId,
-                    processed: true,
-                    type: 'checkout.session.completed',
-                },
-            });
-
-            return 'processed';
+            },
         };
 
-        const firstAttempt = await processWebhook();
-        const secondAttempt = await processWebhook();
+        const result = await processStripeEvent(event);
 
-        expect(firstAttempt).toBe('processed');
-        expect(secondAttempt).toBe('duplicate');
+        expect(result.processed).toBe(true);
+        expect(result.duplicate).toBe(false);
+
+        const updatedOrder = await prisma.order.findUnique({
+            where: {
+                id: order.id,
+            },
+        });
+
+        expect(updatedOrder.paymentStatus).toBe('PAID');
+        expect(updatedOrder.status).toBe('CONFIRMED');
+        expect(updatedOrder.stripePaymentIntentId).toBe('pi_test_123');
+        expect(updatedOrder.paidAt).toBeTruthy();
+
+        expect(mockAddOrderConfirmationEmailJob).toHaveBeenCalledTimes(1);
+        expect(mockAddOrderConfirmationEmailJob).toHaveBeenCalledWith({
+            to: user.email,
+            customerName: user.fullName,
+            orderId: order.id,
+            totalAmount: 100,
+        });
+
+        const webhookEvents = await prisma.webhookEvent.findMany();
+        expect(webhookEvents).toHaveLength(1);
+    });
+
+    it('does not process the same Stripe event twice', async () => {
+        const user = await prisma.user.create({
+            data: {
+                fullName: 'Duplicate Test User',
+                email: 'duplicate@test.com',
+                password: 'hashedpassword',
+                role: 'CUSTOMER',
+            },
+        });
+
+        const order = await prisma.order.create({
+            data: {
+                userId: user.id,
+                totalAmount: 150,
+                status: 'PENDING',
+                paymentStatus: 'PENDING',
+            },
+        });
+
+        const event = {
+            id: 'evt_test_duplicate_once',
+            type: 'checkout.session.completed',
+            data: {
+                object: {
+                    metadata: {
+                        orderId: order.id,
+                    },
+                    payment_intent: 'pi_duplicate_123',
+                },
+            },
+        };
+
+        const firstResult = await processStripeEvent(event);
+        const secondResult = await processStripeEvent(event);
+
+        expect(firstResult.processed).toBe(true);
+        expect(secondResult.duplicate).toBe(true);
+        expect(secondResult.processed).toBe(false);
 
         const updatedOrder = await prisma.order.findUnique({
             where: {
@@ -108,9 +130,60 @@ describe('Stripe webhook idempotency behavior', () => {
 
         expect(mockAddOrderConfirmationEmailJob).toHaveBeenCalledTimes(1);
 
-        const webhookEvents = await prisma.webhookEvent.findMany();
+        const webhookEvents = await prisma.webhookEvent.findMany({
+            where: {
+                stripeEventId: event.id,
+            },
+        });
 
         expect(webhookEvents).toHaveLength(1);
-        expect(webhookEvents[0].stripeEventId).toBe(stripeEventId);
+    });
+
+    it('does not enqueue another email if order is already paid', async () => {
+        const user = await prisma.user.create({
+            data: {
+                fullName: 'Already Paid User',
+                email: 'paid@test.com',
+                password: 'hashedpassword',
+                role: 'CUSTOMER',
+            },
+        });
+
+        const order = await prisma.order.create({
+            data: {
+                userId: user.id,
+                totalAmount: 75,
+                status: 'CONFIRMED',
+                paymentStatus: 'PAID',
+                paidAt: new Date(),
+            },
+        });
+
+        const event = {
+            id: 'evt_test_already_paid',
+            type: 'checkout.session.completed',
+            data: {
+                object: {
+                    metadata: {
+                        orderId: order.id,
+                    },
+                    payment_intent: 'pi_already_paid',
+                },
+            },
+        };
+
+        const result = await processStripeEvent(event);
+
+        expect(result.processed).toBe(true);
+        expect(mockAddOrderConfirmationEmailJob).not.toHaveBeenCalled();
+
+        const updatedOrder = await prisma.order.findUnique({
+            where: {
+                id: order.id,
+            },
+        });
+
+        expect(updatedOrder.paymentStatus).toBe('PAID');
+        expect(updatedOrder.status).toBe('CONFIRMED');
     });
 });
