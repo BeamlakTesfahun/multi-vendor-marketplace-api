@@ -307,9 +307,90 @@ const getVendorOrders = async (user) => {
     });
 };
 
+const restoreOrderStock = async (tx, orderItems) => {
+    for (const item of orderItems) {
+        await tx.product.update({
+            where: {
+                id: item.productId,
+            },
+            data: {
+                stock: {
+                    increment: item.quantity,
+                },
+                status: 'ACTIVE',
+            },
+        });
+    }
+};
+
+const cancelOrder = async (user, orderId) => {
+    const order = await prisma.order.findUnique({
+        where: {
+            id: orderId,
+        },
+        include: {
+            items: true,
+        },
+    });
+
+    if (!order) {
+        throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
+    }
+
+    if (order.userId !== user.id) {
+        throw new AppError(
+            'You are not allowed to cancel this order.',
+            403,
+            'FORBIDDEN',
+        );
+    }
+
+    if (order.status === 'CANCELLED') {
+        throw new AppError(
+            'Order is already cancelled.',
+            409,
+            'ORDER_ALREADY_CANCELLED',
+        );
+    }
+
+    if (order.paymentStatus === 'PAID') {
+        throw new AppError(
+            'Paid orders cannot be cancelled directly. Please request a refund.',
+            400,
+            'REFUND_REQUIRED',
+        );
+    }
+
+    if (order.status !== 'PENDING' || order.paymentStatus !== 'PENDING') {
+        throw new AppError(
+            'Only pending unpaid orders can be cancelled.',
+            400,
+            'ORDER_NOT_CANCELLABLE',
+        );
+    }
+
+    return prisma.$transaction(async (tx) => {
+        await restoreOrderStock(tx, order.items);
+
+        return tx.order.update({
+            where: {
+                id: orderId,
+            },
+            data: {
+                status: 'CANCELLED',
+                cancelledAt: new Date(),
+            },
+            include: {
+                items: true,
+            },
+        });
+    });
+};
+
 export const orderService = {
     checkout,
     getMyOrders,
     getOrderById,
     getVendorOrders,
+    cancelOrder,
 };
