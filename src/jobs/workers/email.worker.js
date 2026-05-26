@@ -17,17 +17,75 @@ const transporter = nodemailer.createTransport({
     },
 });
 
-const sendEmail = async ({ to, customerName, orderId, totalAmount }) => {
+const getEmailContent = ({
+    type,
+    customerName,
+    orderId,
+    totalAmount,
+    reason,
+}) => {
+    if (type === 'order-confirmation-email') {
+        return {
+            subject: 'Your order has been confirmed',
+            html: `
+                <h2>Order Confirmed</h2>
+                <p>Hello ${customerName},</p>
+                <p>Your order <strong>${orderId}</strong> has been confirmed.</p>
+                <p>Total: <strong>$${totalAmount}</strong></p>
+            `,
+        };
+    }
+
+    if (type === 'refund-requested-email') {
+        return {
+            subject: 'Your refund request was received',
+            html: `
+                <h2>Refund Request Received</h2>
+                <p>Hello ${customerName},</p>
+                <p>Your refund request for order <strong>${orderId}</strong> has been received.</p>
+                <p>Reason: <strong>${reason}</strong></p>
+            `,
+        };
+    }
+
+    if (type === 'refund-approved-email') {
+        return {
+            subject: 'Your refund has been approved',
+            html: `
+                <h2>Refund Approved</h2>
+                <p>Hello ${customerName},</p>
+                <p>Your refund for order <strong>${orderId}</strong> has been approved and processed.</p>
+                <p>Refund Amount: <strong>$${totalAmount}</strong></p>
+            `,
+        };
+    }
+
+    if (type === 'refund-rejected-email') {
+        return {
+            subject: 'Your refund request was rejected',
+            html: `
+                <h2>Refund Request Rejected</h2>
+                <p>Hello ${customerName},</p>
+                <p>Your refund request for order <strong>${orderId}</strong> was rejected.</p>
+            `,
+        };
+    }
+
+    return {
+        subject: 'Marketplace Notification',
+        html: `<p>Hello ${customerName}, you have a marketplace notification.</p>`,
+    };
+};
+
+const sendEmail = async (payload) => {
+    const { to } = payload;
+    const content = getEmailContent(payload);
+
     const info = await transporter.sendMail({
         from: process.env.MAIL_FROM,
         to,
-        subject: 'Your order has been confirmed',
-        html: `
-            <h2>Order Confirmed</h2>
-            <p>Hello ${customerName},</p>
-            <p>Your order <strong>${orderId}</strong> has been confirmed.</p>
-            <p>Total: <strong>$${totalAmount}</strong></p>
-        `,
+        subject: content.subject,
+        html: content.html,
     });
 
     console.log('Email sent:', info.messageId);

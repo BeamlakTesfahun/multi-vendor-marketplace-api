@@ -2,10 +2,40 @@ import { prisma } from '../../config/prisma.js';
 import { stripe } from '../../config/stripe.js';
 import { AppError } from '../../utils/AppError.js';
 
+import {
+    addRefundRequestedEmailJob,
+    addRefundApprovedEmailJob,
+    addRefundRejectedEmailJob,
+} from '../../jobs/producers/email.producer.js';
+
+const restoreOrderStock = async (tx, orderItems) => {
+    for (const item of orderItems) {
+        await tx.product.update({
+            where: {
+                id: item.productId,
+            },
+            data: {
+                stock: {
+                    increment: item.quantity,
+                },
+                status: 'ACTIVE',
+            },
+        });
+    }
+};
+
 const requestRefund = async (user, orderId, payload) => {
     const order = await prisma.order.findUnique({
         where: {
             id: orderId,
+        },
+        include: {
+            user: {
+                select: {
+                    fullName: true,
+                    email: true,
+                },
+            },
         },
     });
 
@@ -45,7 +75,7 @@ const requestRefund = async (user, orderId, payload) => {
         );
     }
 
-    return prisma.order.update({
+    const refundRequest = await prisma.order.update({
         where: {
             id: orderId,
         },
@@ -56,6 +86,16 @@ const requestRefund = async (user, orderId, payload) => {
             refundRequestedById: user.id,
         },
     });
+
+    await addRefundRequestedEmailJob({
+        to: order.user.email,
+        customerName: order.user.fullName,
+        orderId: order.id,
+        reason: payload.reason,
+        totalAmount: Number(order.totalAmount),
+    });
+
+    return refundRequest;
 };
 
 const approveRefund = async (user, orderId) => {
@@ -114,7 +154,7 @@ const approveRefund = async (user, orderId) => {
         payment_intent: order.stripePaymentIntentId,
     });
 
-    return prisma.$transaction(async (tx) => {
+    const refundedOrder = await prisma.$transaction(async (tx) => {
         await restoreOrderStock(tx, order.items);
 
         return tx.order.update({
@@ -135,6 +175,15 @@ const approveRefund = async (user, orderId) => {
             },
         });
     });
+
+    await addRefundApprovedEmailJob({
+        to: order.user.email,
+        customerName: order.user.fullName,
+        orderId: order.id,
+        totalAmount: Number(order.totalAmount),
+    });
+
+    return refundedOrder;
 };
 
 const rejectRefund = async (user, orderId) => {
@@ -145,6 +194,14 @@ const rejectRefund = async (user, orderId) => {
     const order = await prisma.order.findUnique({
         where: {
             id: orderId,
+        },
+        include: {
+            user: {
+                select: {
+                    fullName: true,
+                    email: true,
+                },
+            },
         },
     });
 
@@ -160,7 +217,7 @@ const rejectRefund = async (user, orderId) => {
         );
     }
 
-    return prisma.order.update({
+    const rejectedOrder = await prisma.order.update({
         where: {
             id: orderId,
         },
@@ -169,6 +226,15 @@ const rejectRefund = async (user, orderId) => {
             refundProcessedAt: new Date(),
         },
     });
+
+    await addRefundRejectedEmailJob({
+        to: order.user.email,
+        customerName: order.user.fullName,
+        orderId: order.id,
+        totalAmount: Number(order.totalAmount),
+    });
+
+    return rejectedOrder;
 };
 
 const getMyRefundRequests = async (user) => {
