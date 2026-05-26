@@ -17,3 +17,51 @@ export const addOrderConfirmationEmailJob = async (payload) => {
 
     return job;
 };
+
+export const addRefundRequestedEmailJob = async (payload) => {
+    return emailQueue.add('refund-requested-email', payload, {
+        jobId: `refund-requested-${payload.orderId}`,
+        attempts: 3,
+        backoff: {
+            type: 'exponential',
+            delay: 5000,
+        },
+        removeOnComplete: {
+            age: 3600,
+            count: 1000,
+        },
+        removeOnFail: false,
+    });
+};
+
+export const addRefundApprovedEmailJob = async (payload) => {
+    return emailQueue.add('refund-approved-email', payload, {
+        jobId: `refund-approved-${payload.orderId}`,
+        attempts: 3,
+        backoff: {
+            type: 'exponential',
+            delay: 5000,
+        },
+        removeOnComplete: {
+            age: 3600,
+            count: 1000,
+        },
+        removeOnFail: false,
+    });
+};
+
+export const addRefundRejectedEmailJob = async (payload) => {
+    return emailQueue.add('refund-rejected-email', payload, {
+        jobId: `refund-rejected-${payload.orderId}`,
+        attempts: 3,
+        backoff: {
+            type: 'exponential',
+            delay: 5000,
+        },
+        removeOnComplete: {
+            age: 3600,
+            count: 1000,
+        },
+        removeOnFail: false,
+    });
+};

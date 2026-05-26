@@ -4,8 +4,22 @@ export const createEmailWorker = ({ queueName, connection, sendEmail }) => {
     return new Worker(
         queueName,
         async (job) => {
-            if (job.name === 'order-confirmation-email') {
-                await sendEmail(job.data);
+            console.log('Worker received job:', job.id);
+            console.log('Job name:', job.name);
+            console.log('Job data:', job.data);
+
+            if (
+                [
+                    'order-confirmation-email',
+                    'refund-requested-email',
+                    'refund-approved-email',
+                    'refund-rejected-email',
+                ].includes(job.name)
+            ) {
+                await sendEmail({
+                    type: job.name,
+                    ...job.data,
+                });
             }
         },
         {
