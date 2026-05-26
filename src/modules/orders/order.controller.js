@@ -34,9 +34,16 @@ const getVendorOrders = asyncHandler(async (req, res) => {
     );
 });
 
+const cancelOrder = asyncHandler(async (req, res) => {
+    const result = await orderService.cancelOrder(req.user, req.params.orderId);
+
+    return sendResponse(res, 200, 'Order cancelled successfully.', result);
+});
+
 export const orderController = {
     checkout,
     getMyOrders,
     getOrderById,
     getVendorOrders,
+    cancelOrder,
 };

@@ -42,6 +42,24 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum RefundStatus {
+  NONE
+  REQUESTED
+  APPROVED
+  REJECTED
+  PROCESSING
+  REFUNDED
+  FAILED
+}
+
+enum RefundReason {
+  CUSTOMER_REQUEST
+  DAMAGED_ITEM
+  WRONG_ITEM
+  PAYMENT_ISSUE
+  OTHER
+}
+
 model User {
   id       String @id @default(cuid())
   fullName String
@@ -54,7 +72,8 @@ model User {
 
   vendorProfile Vendor?
 
-  orders Order[]
+  orders         Order[]
+  refundRequests Order[] @relation("RefundRequester")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -178,9 +197,22 @@ model Order {
   status        OrderStatus   @default(PENDING)
   paymentStatus PaymentStatus @default(PENDING)
 
-  stripeCheckoutSessionId String?   @unique
+  stripeCheckoutSessionId String? @unique
   stripePaymentIntentId   String?
-  paidAt                  DateTime?
+  stripeRefundId          String?
+
+  paidAt      DateTime?
+  cancelledAt DateTime?
+
+  refundStatus      RefundStatus  @default(NONE)
+  refundReason      RefundReason?
+  refundRequestedAt DateTime?
+  refundProcessedAt DateTime?
+
+  refundAmount Decimal? @db.Decimal(10, 2)
+
+  refundRequestedById String?
+  refundRequestedBy   User?   @relation("RefundRequester", fields: [refundRequestedById], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

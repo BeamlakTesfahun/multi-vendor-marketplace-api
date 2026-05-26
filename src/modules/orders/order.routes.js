@@ -4,6 +4,8 @@ import { orderController } from './order.controller.js';
 import { protect } from '../../middlewares/authMiddleware.js';
 import { authorizeRoles } from '../../middlewares/roleMiddleware.js';
 import { checkoutRateLimiter } from '../../middlewares/rateLimiter.js';
+import { validateRequest } from '../../middlewares/validateRequest.js';
+import { orderIdParamSchema } from './order.validation.js';
 
 const router = express.Router();
 
@@ -29,5 +31,12 @@ router.get(
 );
 
 router.get('/:orderId', orderController.getOrderById);
+
+router.patch(
+    '/:orderId/cancel',
+    authorizeRoles('CUSTOMER'),
+    validateRequest(orderIdParamSchema),
+    orderController.cancelOrder,
+);
 
 export default router;
