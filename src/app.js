@@ -8,6 +8,8 @@ import { notFound } from './middlewares/notFound.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { globalRateLimiter } from './middlewares/rateLimiter.js';
 
+import { serverAdapter } from './config/bullBoard.js';
+
 const app = express();
 
 app.use(cors());
@@ -25,6 +27,8 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api/v1', routes);
+
+app.use('/admin/queues', serverAdapter.getRouter());
 
 app.use(notFound);
 
