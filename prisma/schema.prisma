@@ -52,6 +52,13 @@ enum RefundStatus {
   FAILED
 }
 
+enum InventoryReservationStatus {
+  ACTIVE
+  CONFIRMED
+  RELEASED
+  EXPIRED
+}
+
 enum RefundReason {
   CUSTOMER_REQUEST
   DAMAGED_ITEM
@@ -117,6 +124,9 @@ model Product {
 
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+
+  inventoryReservations InventoryReservation[]
 
   name        String
   slug        String  @unique
@@ -214,6 +224,8 @@ model Order {
   refundRequestedById String?
   refundRequestedBy   User?   @relation("RefundRequester", fields: [refundRequestedById], references: [id])
 
+  inventoryReservations InventoryReservation[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -226,4 +238,25 @@ model WebhookEvent {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model InventoryReservation {
+  id String @id @default(cuid())
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  quantity Int
+
+  status InventoryReservationStatus @default(ACTIVE)
+
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orderId, productId])
 }
