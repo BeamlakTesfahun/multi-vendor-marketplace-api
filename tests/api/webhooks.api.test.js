@@ -13,6 +13,9 @@ jest.unstable_mockModule('../../src/config/stripe.js', () => ({
 
 jest.unstable_mockModule('../../src/jobs/producers/email.producer.js', () => ({
     addOrderConfirmationEmailJob: mockAddOrderConfirmationEmailJob,
+    addRefundRequestedEmailJob: jest.fn(),
+    addRefundApprovedEmailJob: jest.fn(),
+    addRefundRejectedEmailJob: jest.fn(),
 }));
 
 const request = (await import('supertest')).default;
