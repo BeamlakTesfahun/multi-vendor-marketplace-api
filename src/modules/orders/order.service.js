@@ -3,6 +3,29 @@ import { stripe } from '../../config/stripe.js';
 import { env } from '../../config/env.js';
 import { AppError } from '../../utils/AppError.js';
 
+const getReservationExpiry = () => {
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 30);
+
+    return expiresAt;
+};
+
+const restoreOrderStock = async (tx, orderItems) => {
+    for (const item of orderItems) {
+        await tx.product.update({
+            where: {
+                id: item.productId,
+            },
+            data: {
+                stock: {
+                    increment: item.quantity,
+                },
+                status: 'ACTIVE',
+            },
+        });
+    }
+};
+
 const checkout = async (user) => {
     if (user.role !== 'CUSTOMER') {
         throw new AppError(
@@ -70,14 +93,22 @@ const checkout = async (user) => {
                         price: item.product.price,
                     })),
                 },
+                inventoryReservations: {
+                    create: cart.items.map((item) => ({
+                        productId: item.productId,
+                        quantity: item.quantity,
+                        status: 'ACTIVE',
+                        expiresAt: getReservationExpiry(),
+                    })),
+                },
             },
             include: {
                 items: {
                     include: {
                         product: true,
-                        vendor: true,
                     },
                 },
+                inventoryReservations: true,
             },
         });
 
@@ -89,7 +120,9 @@ const checkout = async (user) => {
                     id: item.productId,
                 },
                 data: {
-                    stock: updatedStock,
+                    stock: {
+                        decrement: item.quantity,
+                    },
                     status:
                         updatedStock === 0
                             ? 'OUT_OF_STOCK'
@@ -147,7 +180,6 @@ const getMyOrders = async (user) => {
     if (user.role !== 'CUSTOMER') {
         throw new AppError(
             'Only customers can view their orders.',
-
             403,
             'FORBIDDEN',
         );
@@ -176,6 +208,7 @@ const getMyOrders = async (user) => {
                     },
                 },
             },
+            inventoryReservations: true,
         },
         orderBy: {
             createdAt: 'desc',
@@ -215,6 +248,7 @@ const getOrderById = async (user, orderId) => {
                     },
                 },
             },
+            inventoryReservations: true,
         },
     });
 
@@ -307,22 +341,6 @@ const getVendorOrders = async (user) => {
     });
 };
 
-const restoreOrderStock = async (tx, orderItems) => {
-    for (const item of orderItems) {
-        await tx.product.update({
-            where: {
-                id: item.productId,
-            },
-            data: {
-                stock: {
-                    increment: item.quantity,
-                },
-                status: 'ACTIVE',
-            },
-        });
-    }
-};
-
 const cancelOrder = async (user, orderId) => {
     const order = await prisma.order.findUnique({
         where: {
@@ -330,6 +348,7 @@ const cancelOrder = async (user, orderId) => {
         },
         include: {
             items: true,
+            inventoryReservations: true,
         },
     });
 
@@ -372,6 +391,16 @@ const cancelOrder = async (user, orderId) => {
     return prisma.$transaction(async (tx) => {
         await restoreOrderStock(tx, order.items);
 
+        await tx.inventoryReservation.updateMany({
+            where: {
+                orderId,
+                status: 'ACTIVE',
+            },
+            data: {
+                status: 'RELEASED',
+            },
+        });
+
         return tx.order.update({
             where: {
                 id: orderId,
@@ -382,6 +411,7 @@ const cancelOrder = async (user, orderId) => {
             },
             include: {
                 items: true,
+                inventoryReservations: true,
             },
         });
     });
